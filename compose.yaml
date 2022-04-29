@@ -1,0 +1,52 @@
+services:
+  # v2ray
+  v2ray:
+    image: v2fly/v2fly-core
+    networks:
+      - nginx_net
+    configs:
+      - source: v2rayConfig
+        target: /etc/v2ray/custom_config.json
+    command: [ "/usr/bin/v2ray", "-config", "/etc/v2ray/custom_config.json" ]
+
+  # nginx
+  nginx:
+    image: nginx
+    depends_on:
+      - certbot
+      - v2ray
+    ports:
+      - "80:80"
+      - "$NGINX_PORT:$NGINX_PORT"
+    networks:
+      - nginx_net
+    configs:
+      - source: nginxConfig
+        target: /etc/nginx/custom_nginx.conf
+    volumes:
+      - './html:$WEBROOT_PATH'
+      - /etc/letsencrypt:/etc/letsencrypt
+    command: [nginx-debug, '-c', /etc/nginx/custom_nginx.conf, '-g', 'daemon off;']
+
+  # certbot
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - './html:$WEBROOT_PATH'
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/lib/letsencrypt:/var/lib/letsencrypt
+    # 使用 certbot 证书
+    #command: [certonly, --webroot, -w, "$WEBROOT_PATH", -d, "$DOMAIN", -m, '$EMAIL', --rsa-key-size, '4096', --agree-tos, --no-eff-email,  --test-cert]
+    # 由于本地无法完成证书验证，此处使用 openssl 创建自签证书
+    entrypoint: [openssl, req, -x509, -nodes, -newkey, rsa:2048, -keyout, /etc/letsencrypt/live/$DOMAIN/privkey.pem, -out, /etc/letsencrypt/live/$DOMAIN/fullchain.pem, -subj, "/CN=$DOMAIN/", -addext, "subjectAltName=IP:127.0.0.1"]
+
+configs:
+  v2rayConfig:
+    file: ./v2ray/config.json
+  nginxConfig:
+    file: ./nginx/nginx.conf
+
+
+networks:
+  nginx_net:
+    driver: bridge
